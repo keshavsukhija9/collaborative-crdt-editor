@@ -1,122 +1,74 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { useState, useRef, useCallback } from 'react';
+import { useCRDTDocument } from './hooks/useCRDTDocument';
+import { useWebSocket } from './hooks/useWebSocket';
+
+const CLIENT_ID = Math.random().toString(36).slice(2, 10);
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [name] = useState(`User-${CLIENT_ID.slice(0, 4)}`);
+  const { text, insertLocal, deleteLocal, applyRemote } = useCRDTDocument(CLIENT_ID);
+  const [presence, setPresence] = useState<any[]>([]);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const prevTextRef = useRef('');
+
+  const { connected, sendOp } = useWebSocket({
+    roomId: 'demo-room',
+    clientId: CLIENT_ID,
+    name,
+    onOp: (op) => applyRemote(op),
+    onSync: (ops) => ops.forEach(op => applyRemote(op)),
+    onPresence: (clients) => setPresence(clients),
+  });
+
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newText = e.target.value;
+    const oldText = prevTextRef.current;
+
+    // Naive diff: find first point of difference (good enough for single
+    // keystrokes, which is the common case for a real typing user)
+    let i = 0;
+    while (i < oldText.length && i < newText.length && oldText[i] === newText[i]) i++;
+
+    if (newText.length > oldText.length) {
+      // Characters were inserted starting at index i
+      const inserted = newText.slice(i, i + (newText.length - oldText.length));
+      let insertIndex = i;
+      for (const char of inserted) {
+        const op = insertLocal(insertIndex, char);
+        sendOp(op);
+        insertIndex++;
+      }
+    } else if (newText.length < oldText.length) {
+      // Characters were deleted starting at index i
+      const deleteCount = oldText.length - newText.length;
+      for (let d = 0; d < deleteCount; d++) {
+        const op = deleteLocal(i);
+        sendOp(op);
+      }
+    }
+
+    prevTextRef.current = newText;
+  }, [insertLocal, deleteLocal, sendOp]);
+
+  // Keep the textarea in sync when remote ops change `text`
+  if (textareaRef.current && document.activeElement !== textareaRef.current) {
+    prevTextRef.current = text;
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <div style={{ padding: 20, fontFamily: 'monospace' }}>
+      <h2>Collaborative CRDT Editor</h2>
+      <p>Status: {connected ? '🟢 connected' : '🔴 disconnected'} | Client: {name}</p>
+      <p>Online: {presence.map(p => p.name).join(', ')}</p>
 
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      <textarea
+        ref={textareaRef}
+        value={text}
+        onChange={handleChange}
+        style={{ width: '600px', height: '300px', fontSize: '16px', padding: '10px' }}
+      />
+    </div>
+  );
 }
 
-export default App
+export default App;

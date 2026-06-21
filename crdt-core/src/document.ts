@@ -10,7 +10,6 @@ export class CRDTDocument {
     this.clientId = clientId;
   }
 
-  // Called when the local user types a character at a given index
   localInsert(index: number, char: string): InsertOp {
     const visibleNodes = this.nodes.filter(n => !n.deleted);
     const originLeft = index > 0 ? visibleNodes[index - 1].id : null;
@@ -31,7 +30,19 @@ export class CRDTDocument {
   // but is not the full LSEQ/Logoot position-allocation scheme, which
   // handles deeper concurrent-insertion chains with more rigor. This is
   // a deliberate scope decision.
-  applyInsert(node: CharNode): void {
+  //
+  // IMPORTANT: we clone the incoming node here. Without this, two documents
+  // applying the same operation would share the same JS object reference,
+  // so a delete on one document's copy would silently mutate the other
+  // document's state too — a real bug I hit while writing tests.
+  applyInsert(incomingNode: CharNode): void {
+    const node: CharNode = {
+      id: { ...incomingNode.id },
+      char: incomingNode.char,
+      originLeft: incomingNode.originLeft ? { ...incomingNode.originLeft } : null,
+      deleted: incomingNode.deleted,
+    };
+
     const insertAfterIndex = node.originLeft
       ? this.nodes.findIndex(n => idsEqual(n.id, node.originLeft))
       : -1;

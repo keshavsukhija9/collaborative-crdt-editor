@@ -4,8 +4,6 @@ Real-time collaborative editing built from scratch — no Yjs, no Automerge, no 
 
 Open two tabs, type in both at the same time. Both documents converge to the same state. That's the guarantee a CRDT provides, and it works here without any central arbitration.
 
-**Live demo:** (coming soon — deploying on Railway + Vercel)
-
 ---
 
 ## What this actually does
@@ -73,16 +71,6 @@ Known limitations (intentional scope decisions, not bugs):
 - Deep concurrent insertion chains don't guarantee full LSEQ ordering — would need a complete Logoot/LSEQ implementation to fix, out of scope here
 - Out-of-order deletes (delete arrives before its insert) are silently dropped — production would buffer and retry
 - Op log is in-memory — server restart clears history
-
----
-
-## What's next
-
-- [ ] Deploy — Railway (server) + Vercel (frontend)
-- [ ] Persistent op log (PostgreSQL)
-- [ ] CodeMirror integration for syntax highlighting
-- [ ] Named rooms via URL (e.g. `/room/my-project`)
-- [ ] Convergence stress test — automated concurrent edit simulation
 
 ---
 

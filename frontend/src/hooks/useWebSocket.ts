@@ -15,7 +15,7 @@ export function useWebSocket({ roomId, clientId, name, onOp, onSync, onPresence 
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    const url = `ws://localhost:8080?room=${roomId}&clientId=${clientId}&name=${encodeURIComponent(name)}`;
+    const url = `${import.meta.env.VITE_WS_URL ?? "ws://localhost:8080"}?room=${roomId}&clientId=${clientId}&name=${encodeURIComponent(name)}`;
     const ws = new WebSocket(url);
     wsRef.current = ws;
 

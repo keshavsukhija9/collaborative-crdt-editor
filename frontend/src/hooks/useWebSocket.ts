@@ -38,5 +38,11 @@ export function useWebSocket({ roomId, clientId, name, onOp, onSync, onPresence 
     }
   }, []);
 
-  return { connected, sendOp };
+  const sendCursor = useCallback((position: number) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'cursor', position }));
+    }
+  }, []);
+
+  return { connected, sendOp, sendCursor };
 }

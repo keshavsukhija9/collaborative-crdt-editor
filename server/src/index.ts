@@ -23,7 +23,7 @@ wss.on('connection', (ws: WebSocket, req) => {
     if (message.type === 'op') {
       room.broadcastOp(message.op as Operation, clientId);
     } else if (message.type === 'cursor') {
-      room.updateCursor(clientId, message.position);
+      room.updateCursor(clientId, message.position, message.docHash ?? "");
     }
   });
 

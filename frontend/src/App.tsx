@@ -2,6 +2,13 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useCRDTDocument } from './hooks/useCRDTDocument';
 import { useWebSocket } from './hooks/useWebSocket';
 
+
+function hashText(str: string): string {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) h = ((h * 33) ^ str.charCodeAt(i)) >>> 0;
+  return h.toString(16).padStart(8, '0');
+}
+
 const CLIENT_ID = Math.random().toString(36).slice(2, 10);
 
 const COLORS = ['#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#1abc9c','#e67e22','#e91e63'];
@@ -28,6 +35,8 @@ function App() {
   const [presence, setPresence] = useState<any[]>([]);
   const [opLog, setOpLog] = useState<OpEntry[]>([]);
   const opCountRef = useRef(0);
+  const [conflictsResolved, setConflictsResolved] = useState(0);
+  const maxRemoteClockRef = useRef<Record<string, number>>({});
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const prevTextRef = useRef('');
   const isApplyingRemoteRef = useRef(false);
@@ -45,6 +54,11 @@ function App() {
       applyRemote(op);
       isApplyingRemoteRef.current = false;
       const o = op as any;
+      const remoteClientId = op.type === 'insert' ? (o.node?.id?.clientId ?? '') : (o.id?.clientId ?? '');
+      const remoteClock = op.type === 'insert' ? (o.node?.id?.clock ?? 0) : (o.id?.clock ?? 0);
+      const prevMax = maxRemoteClockRef.current[remoteClientId] ?? 0;
+      if (remoteClock < prevMax) setConflictsResolved(c => c + 1);
+      maxRemoteClockRef.current[remoteClientId] = Math.max(prevMax, remoteClock);
       if (op.type === 'insert') {
         addOp({ type: 'insert', clientId: o.node.id.clientId, clock: o.node.id.clock, index: -1, char: o.node.char, source: 'remote' });
       } else {
@@ -95,10 +109,16 @@ function App() {
     prevTextRef.current = newText;
   }, [insertLocal, deleteLocal, sendOp, addOp]);
 
+  const docHash = hashText(text);
+
   const handleCursorMove = useCallback(() => {
     const pos = textareaRef.current?.selectionStart ?? 0;
     sendCursor(pos);
   }, [sendCursor]);
+
+  useEffect(() => {
+    sendCursor(textareaRef.current?.selectionStart ?? 0, hashText(text));
+  }, [text, sendCursor]);
 
   return (
     <div style={{ display: 'flex', height: '100vh', fontFamily: 'monospace', background: '#0d1117', color: '#c9d1d9', overflow: 'hidden' }}>
@@ -160,6 +180,44 @@ function App() {
 
       {/* ── Right: op log panel ── */}
       <div style={{ width: 340, background: '#161b22', borderLeft: '1px solid #30363d', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+
+
+        {/* Convergence status */}
+        <div style={{ padding: '10px 16px', borderBottom: '1px solid #21262d' }}>
+          <div style={{ fontSize: 11, color: '#8b949e', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 'bold', marginBottom: 8 }}>
+            Convergence Status
+          </div>
+          {(() => {
+            const enrichedPresence = presence.map(p => p.clientId === CLIENT_ID ? { ...p, docHash } : p);
+            const allHashes = enrichedPresence.map(p => p.docHash).filter(Boolean);
+            const uniqueHashes = new Set(allHashes);
+            const converged = presence.length > 1 && uniqueHashes.size === 1;
+            const hasMultiple = presence.length > 1;
+            return (
+              <div>
+                <div style={{
+                  padding: '6px 10px', borderRadius: 6, marginBottom: 8, fontSize: 11, fontWeight: 'bold',
+                  background: converged ? '#2ecc7122' : hasMultiple ? '#f39c1222' : '#30363d',
+                  color: converged ? '#2ecc71' : hasMultiple ? '#f39c12' : '#8b949e',
+                  border: `1px solid ${converged ? '#2ecc71' : hasMultiple ? '#f39c12' : '#30363d'}`,
+                }}>
+                  {converged ? '✓ ALL CLIENTS CONVERGED' : hasMultiple ? '⟳ MERGING...' : 'waiting for second client'}
+                </div>
+                {enrichedPresence.map(p => (
+                  <div key={p.clientId} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#8b949e', marginBottom: 3 }}>
+                    <span style={{ color: getColor(p.clientId) }}>{p.name}{p.clientId === CLIENT_ID ? ' (you)' : ''}</span>
+                    <span style={{ fontFamily: 'monospace', color: p.docHash === docHash ? '#2ecc71' : '#e74c3c' }}>
+                      #{p.docHash?.slice(0, 6) ?? '------'}
+                    </span>
+                  </div>
+                ))}
+                <div style={{ marginTop: 8, fontSize: 10, color: '#484f58' }}>
+                  conflicts resolved: <span style={{ color: '#f0e68c' }}>{conflictsResolved}</span>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
 
         <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid #30363d' }}>
           <div style={{ fontSize: 11, color: '#8b949e', textTransform: 'uppercase', letterSpacing: 1, fontWeight: 'bold' }}>

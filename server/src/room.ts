@@ -6,6 +6,7 @@ interface ConnectedClient {
   clientId: string;
   name: string;
   cursorPosition: number;
+  docHash: string;
 }
 
 export class Room {
@@ -13,7 +14,7 @@ export class Room {
   private opLog: Operation[] = [];
 
   join(clientId: string, ws: WebSocket, name: string): void {
-    this.clients.set(clientId, { ws, clientId, name, cursorPosition: 0 });
+    this.clients.set(clientId, { ws, clientId, name, cursorPosition: 0, docHash: '' });
 
     // Send the full op log so the new client can reconstruct document state
     ws.send(JSON.stringify({ type: 'sync', ops: this.opLog }));
@@ -38,9 +39,9 @@ export class Room {
     }
   }
 
-  updateCursor(clientId: string, position: number): void {
+  updateCursor(clientId: string, position: number, docHash: string): void {
     const client = this.clients.get(clientId);
-    if (client) client.cursorPosition = position;
+    if (client) { client.cursorPosition = position; client.docHash = docHash; }
     this.broadcastPresence();
   }
 
@@ -53,6 +54,7 @@ export class Room {
       clientId: c.clientId,
       name: c.name,
       cursorPosition: c.cursorPosition,
+      docHash: c.docHash,
     }));
     const message = JSON.stringify({
       type: 'presence',
